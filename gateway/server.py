@@ -8,6 +8,7 @@ import json
 import mimetypes
 import os
 import pathlib
+import socket
 import subprocess
 import threading
 import time
@@ -48,12 +49,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self, payload, status=200):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            # 瀏覽器已停止等待時，不需要把正常的斷線印成整頁錯誤。
+            pass
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -106,11 +111,34 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "尚未設定 AMB82-MINI IP"}, 503)
         started = time.perf_counter()
         try:
-            with urllib.request.urlopen(f"http://{board_ip}:{status_port}/status", timeout=0.8) as response:
-                payload = json.loads(response.read())
+            # AMB82 送完 JSON 後會很快關閉 socket。Chrome 可以容忍這種行為，
+            # 但 urllib 可能把已收到完整回應後的 TCP reset 視為失敗。
+            # 使用原始 socket 並保留 reset 前已收到的資料，讓閘道穩定解析狀態。
+            request = (
+                f"GET /status HTTP/1.0\r\nHost: {board_ip}\r\n"
+                "Connection: close\r\n\r\n"
+            ).encode("ascii")
+            received = bytearray()
+            with socket.create_connection((board_ip, status_port), timeout=2.0) as board:
+                board.settimeout(2.0)
+                board.sendall(request)
+                while True:
+                    try:
+                        chunk = board.recv(4096)
+                    except ConnectionResetError:
+                        if received:
+                            break
+                        raise
+                    if not chunk:
+                        break
+                    received.extend(chunk)
+            _, separator, body = bytes(received).partition(b"\r\n\r\n")
+            if not separator:
+                raise ValueError("開發板回應格式不完整")
+            payload = json.loads(body)
             payload["latencyMs"] = round((time.perf_counter() - started) * 1000)
             self._json(payload)
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError, OSError) as exc:
             self._json({"error": "無法讀取開發板狀態", "detail": str(exc)}, 503)
 
     def stream_rtsp(self):

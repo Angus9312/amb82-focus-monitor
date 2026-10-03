@@ -15,6 +15,7 @@
 #include "RTSP.h"
 #include "NNObjectDetection.h"
 #include "VideoStreamOverlay.h"
+#include <algorithm>
 
 #define STREAM_CHANNEL 0
 #define NN_CHANNEL 3
@@ -30,6 +31,7 @@ const unsigned long TRIGGER_MS = 3000;
 const unsigned long REARM_MS = 3000;
 const unsigned long RESULT_STALE_MS = 900;
 
+// 請在燒錄前換成自己的 Wi-Fi 資料；不要把真實密碼提交到 GitHub。
 char ssid[] = "YOUR_WIFI_SSID";
 char pass[] = "YOUR_WIFI_PASSWORD";
 
@@ -39,7 +41,7 @@ NNObjectDetection detector;
 RTSP rtsp;
 StreamIO streamLink(1, 1);
 StreamIO nnLink(1, 1);
-WiFiServer statusServer(8080, TCP_MODE, NON_BLOCKING_MODE);
+WiFiServer statusServer(8080);
 
 struct Box {
     float x1, y1, x2, y2;
@@ -67,12 +69,12 @@ unsigned long elapsedSince(unsigned long started, unsigned long now)
 
 float overlapOfPhone(const Box &person, const Box &phone)
 {
-    float left = max(person.x1, phone.x1);
-    float top = max(person.y1, phone.y1);
-    float right = min(person.x2, phone.x2);
-    float bottom = min(person.y2, phone.y2);
-    float intersection = max(0.0f, right - left) * max(0.0f, bottom - top);
-    float phoneArea = max(0.0f, phone.x2 - phone.x1) * max(0.0f, phone.y2 - phone.y1);
+    float left = std::max(person.x1, phone.x1);
+    float top = std::max(person.y1, phone.y1);
+    float right = std::min(person.x2, phone.x2);
+    float bottom = std::min(person.y2, phone.y2);
+    float intersection = std::max(0.0f, right - left) * std::max(0.0f, bottom - top);
+    float phoneArea = std::max(0.0f, phone.x2 - phone.x1) * std::max(0.0f, phone.y2 - phone.y1);
     return phoneArea > 0.0001f ? intersection / phoneArea : 0.0f;
 }
 
@@ -123,14 +125,16 @@ void drawOverlay()
         int x2 = personBox.x2 * width, y2 = personBox.y2 * height;
         OSD.drawRect(STREAM_CHANNEL, x1, y1, x2, y2, 3, OSD_COLOR_CYAN);
         char label[30]; snprintf(label, sizeof(label), "student %d", personBox.score);
-        OSD.drawText(STREAM_CHANNEL, x1, max(0, y1 - OSD.getTextHeight(STREAM_CHANNEL)), label, OSD_COLOR_CYAN);
+        int textY = std::max<int>(0, y1 - static_cast<int>(OSD.getTextHeight(STREAM_CHANNEL)));
+        OSD.drawText(STREAM_CHANNEL, x1, textY, label, OSD_COLOR_CYAN);
     }
     if (phoneBox.valid) {
         int x1 = phoneBox.x1 * width, y1 = phoneBox.y1 * height;
         int x2 = phoneBox.x2 * width, y2 = phoneBox.y2 * height;
         OSD.drawRect(STREAM_CHANNEL, x1, y1, x2, y2, 3, OSD_COLOR_WHITE);
         char label[34]; snprintf(label, sizeof(label), "cell phone %d", phoneBox.score);
-        OSD.drawText(STREAM_CHANNEL, x1, max(0, y1 - OSD.getTextHeight(STREAM_CHANNEL)), label, OSD_COLOR_WHITE);
+        int textY = std::max<int>(0, y1 - static_cast<int>(OSD.getTextHeight(STREAM_CHANNEL)));
+        OSD.drawText(STREAM_CHANNEL, x1, textY, label, OSD_COLOR_WHITE);
     }
     if (distracted) {
         OSD.drawText(STREAM_CHANNEL, 24, 36, "FOCUS!", OSD_COLOR_WHITE);
@@ -207,19 +211,26 @@ void handleStatusClient()
 {
     WiFiClient client = statusServer.available();
     if (!client) return;
-    unsigned long deadline = millis() + 250;
-    String firstLine = "";
-    while (client.connected() && millis() < deadline) {
-        if (!client.available()) { delay(1); continue; }
-        char c = client.read();
-        if (c == '\n') break;
-        if (c != '\r' && firstLine.length() < 100) firstLine += c;
-    }
-    while (client.available()) client.read();
-    if (firstLine.startsWith("GET /status")) sendStatus(client);
-    else client.print("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
-    delay(1);
+
+    // 8080 是專用狀態連接埠，不需要解析 HTTP request。
+    // AmebaPro2 4.1.1 的 blocking client.available() 可能在 TCP 已連線、
+    // request payload 尚未送達時持續等待，造成網路工作無法繼續。
+    // 接受連線後直接回傳最新 JSON，可避免這個互鎖情況。
+    delay(5);
+    sendStatus(client);
+    delay(5);
     client.stop();
+}
+
+// 將 HTTP 狀態服務放在獨立工作中，避免 YOLO 與 OSD 處理占用主迴圈時，
+// 瀏覽器雖然連上 8080，卻一直等不到 JSON 回應。
+void statusTask(void *parameter)
+{
+    (void)parameter;
+    while (true) {
+        handleStatusClient();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
 }
 
 void setup()
@@ -259,6 +270,9 @@ void setup()
     OSD.configVideo(STREAM_CHANNEL, streamConfig);
     OSD.begin();
     statusServer.begin();
+    if (xTaskCreate(statusTask, "StatusTask", 4096, NULL, tskIDLE_PRIORITY + 1, NULL) != pdPASS) {
+        Serial.println("Status server task start failed");
+    }
 
     Serial.print("AMB82 IP: "); Serial.println(WiFi.localIP());
     Serial.print("RTSP: rtsp://"); Serial.print(WiFi.localIP()); Serial.print(":"); Serial.println(rtsp.getPort());
@@ -268,6 +282,5 @@ void setup()
 void loop()
 {
     processDetections();
-    handleStatusClient();
     delay(80);
 }
