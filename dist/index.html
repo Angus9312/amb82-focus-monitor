@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Ameba AMB82-MINI 學習專注偵測監控面板">
+  <meta name="theme-color" content="#07101f">
+  <title>AMB82 專注偵測</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307101f'/%3E%3Cpath d='M18 22h28v21H18z' fill='none' stroke='%2337e6a5' stroke-width='4'/%3E%3Ccircle cx='32' cy='32.5' r='6' fill='%23ffcf5a'/%3E%3Cpath d='M23 17v7M41 17v7' stroke='%2337e6a5' stroke-width='4'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="回到監控面板頂端">
+        <span class="brand-mark" aria-hidden="true"><span></span></span>
+        <span><strong>FOCUS / 82</strong><small>AMB82-MINI 視覺監測</small></span>
+      </a>
+      <div class="top-actions">
+        <div class="connection-pill" id="connectionPill" role="status" aria-live="polite">
+          <span class="status-dot"></span><span id="connectionText">展示模式</span>
+        </div>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="開啟連線設定" title="連線設定">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Zm7.2-2.1v-2.2l-2-.7a7 7 0 0 0-.7-1.6l.9-1.9-1.6-1.6-1.9.9a7 7 0 0 0-1.6-.7l-.7-2H9.4l-.7 2a7 7 0 0 0-1.6.7l-1.9-.9-1.6 1.6.9 1.9a7 7 0 0 0-.7 1.6l-2 .7v2.2l2 .7c.2.6.4 1.1.7 1.6l-.9 1.9 1.6 1.6 1.9-.9c.5.3 1 .5 1.6.7l.7 2h2.2l.7-2c.6-.2 1.1-.4 1.6-.7l1.9.9 1.6-1.6-.9-1.9c.3-.5.5-1 .7-1.6l2-.7Z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section class="dashboard-grid" aria-label="即時專注監控">
+        <div class="overview-panel">
+          <div class="section-kicker"><span class="live-mark"></span>即時判斷</div>
+          <div class="status-hero" id="statusHero">
+            <p class="eyebrow" id="stateEyebrow">系統待命中</p>
+            <h1 id="stateTitle">保持專注</h1>
+            <p id="stateDescription">持續辨識 3 秒才會觸發提醒，短暫出現不計次。</p>
+            <div class="threshold-track" aria-label="滑手機連續時間進度">
+              <span id="thresholdFill"></span>
+            </div>
+            <div class="threshold-labels"><span>開始偵測</span><strong id="thresholdLabel">0.0 / 3.0 秒</strong></div>
+          </div>
+
+          <div class="metrics" aria-label="辨識秒數">
+            <article class="metric">
+              <div class="metric-icon person-icon" aria-hidden="true"><span></span></div>
+              <div><p>連續辨識學生</p><strong><span id="personSeconds">0.0</span><small> 秒</small></strong></div>
+              <span class="signal" id="personSignal">未偵測</span>
+            </article>
+            <article class="metric">
+              <div class="metric-icon phone-icon" aria-hidden="true"><span></span></div>
+              <div><p>連續辨識手機</p><strong><span id="phoneSeconds">0.0</span><small> 秒</small></strong></div>
+              <span class="signal" id="phoneSignal">未偵測</span>
+            </article>
+            <article class="metric overlap-metric">
+              <div class="metric-icon overlap-icon" aria-hidden="true"><span></span><i></i></div>
+              <div><p>人與手機框重疊</p><strong id="overlapState">否</strong></div>
+              <span class="signal" id="overlapSignal">等待畫面</span>
+            </article>
+          </div>
+
+          <div class="count-strip">
+            <div>
+              <p>本次分心次數</p>
+              <strong id="eventCount">0</strong>
+            </div>
+            <div class="rearm-status">
+              <span id="armDot"></span>
+              <div><p>下一次計數</p><strong id="armText">已準備</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <aside class="camera-panel" aria-label="AMB82-MINI 即時影像">
+          <div class="camera-header">
+            <div><span class="camera-label">CAM 01</span><strong>書桌區域</strong></div>
+            <span id="cameraClock">--:--:--</span>
+          </div>
+          <div class="camera-stage" id="cameraStage">
+            <img id="cameraFeed" alt="AMB82-MINI 攝影機即時影像，包含 YOLO 辨識框">
+            <div class="demo-feed" id="demoFeed" aria-hidden="true">
+              <span class="scanline"></span>
+              <span class="desk-line"></span>
+              <span class="demo-caption">DEMO SIGNAL · 576 × 320</span>
+            </div>
+            <div class="bbox person-box" id="personBox"><span>student <b id="personConfidence">--</b></span></div>
+            <div class="bbox phone-box" id="phoneBox"><span>cell phone <b id="phoneConfidence">--</b></span></div>
+            <div class="camera-empty" id="cameraEmpty">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h4l1.2-2h5.6L16 7h4v12H4V7Zm8 9a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
+              <strong>等待攝影機畫面</strong>
+              <span>本機啟動後將自動載入 RTSP 影像</span>
+            </div>
+            <span class="corner tl"></span><span class="corner tr"></span><span class="corner bl"></span><span class="corner br"></span>
+          </div>
+          <div class="camera-footer">
+            <div><span>MODEL</span><strong>YOLOv4-Tiny</strong></div>
+            <div><span>門檻</span><strong id="confidenceLabel">60%</strong></div>
+            <div><span>延遲</span><strong id="latencyLabel">展示</strong></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="decision-panel" aria-label="系統判斷規則">
+        <div class="decision-title"><span>判斷流程</span><strong>連續證據優先，不因單張畫面誤判</strong></div>
+        <ol>
+          <li id="rulePerson"><span>01</span><div><strong>確認學生</strong><small>信心值達門檻</small></div></li>
+          <li id="rulePhone"><span>02</span><div><strong>確認手機</strong><small>排除低信心結果</small></div></li>
+          <li id="ruleOverlap"><span>03</span><div><strong>框體重疊</strong><small>手機框至少 20%</small></div></li>
+          <li id="ruleDuration"><span>04</span><div><strong>持續 3 秒</strong><small>才提醒並計次</small></div></li>
+        </ol>
+        <div class="privacy-note"><span aria-hidden="true">◉</span>影像只在區域網路中即時顯示；此面板不儲存照片或影片。</div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="focusToast" role="alert" aria-live="assertive">
+    <span aria-hidden="true">!</span><div><strong>專心一下！</strong><p>偵測到持續使用手機超過 3 秒</p></div>
+  </div>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" id="settingsForm">
+      <div class="dialog-head"><div><span>DEVICE LINK</span><h2>AMB82-MINI 連線設定</h2></div><button value="cancel" aria-label="關閉設定">×</button></div>
+      <p class="dialog-intro">硬體與電腦需連到同一個 Wi-Fi。設定會交由本機閘道程式使用。</p>
+      <label>開發板 IP 位址<input id="boardIp" name="boardIp" inputmode="decimal" placeholder="例如 192.168.1.82" autocomplete="off"></label>
+      <div class="input-row">
+        <label>RTSP 連接埠<input id="rtspPort" name="rtspPort" type="number" min="1" max="65535" value="554"></label>
+        <label>狀態連接埠<input id="statusPort" name="statusPort" type="number" min="1" max="65535" value="8080"></label>
+      </div>
+      <div class="setting-summary"><span>觸發時間<strong>3 秒</strong></span><span>信心門檻<strong>60%</strong></span><span>重新計數等待<strong>3 秒</strong></span></div>
+      <p class="form-message" id="formMessage"></p>
+      <div class="dialog-actions"><button class="secondary-button" value="cancel">取消</button><button class="primary-button" id="saveSettings" value="default">儲存並連線</button></div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
